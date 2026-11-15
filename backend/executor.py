@@ -1,38 +1,143 @@
 
 import os
 import time
-import tempfile
-import subprocess
-from pathlib import Path
+import requests
 
 
 LANGUAGE_CONFIG = {
     "python": {
-        "image": "python:3.12-slim",
+        "language": "python",
         "filename": "main.py",
-        "command": "python -I /workspace/main.py",
     },
     "javascript": {
-        "image": "node:22-slim",
+        "language": "javascript",
         "filename": "main.js",
-        "command": "node /workspace/main.js",
     },
     "java": {
-        "image": "eclipse-temurin:21-jdk",
+        "language": "java",
         "filename": "Main.java",
-        "command": "javac -d /tmp /workspace/Main.java && java -cp /tmp Main",
     },
     "c": {
-        "image": "gcc:14",
+        "language": "c",
         "filename": "main.c",
-        "command": "gcc -O0 /workspace/main.c -o /tmp/program && /tmp/program",
     },
     "cpp": {
-        "image": "gcc:14",
+        "language": "c++",
         "filename": "main.cpp",
-        "command": "g++ -O0 /workspace/main.cpp -o /tmp/program && /tmp/program",
     },
 }
+
+
+ONLINE_COMPILER_URL = (
+    "https://api.onlinecompiler.io/api/v2/piston/execute"
+)
+
+
+def execute_online(language: str, code: str, stdin: str = ""):
+    api_key = os.getenv("ONLINECOMPILER_API_KEY")
+
+    if not api_key:
+        raise RuntimeError(
+            "ONLINECOMPILER_API_KEY is missing in server environment."
+        )
+
+    config = LANGUAGE_CONFIG[language]
+
+    payload = {
+        "language": config["language"],
+        "version": "*",
+        "files": [
+            {
+                "name": config["filename"],
+                "content": code,
+            }
+        ],
+        "stdin": stdin,
+        "run_timeout": 10000,
+    }
+
+    start_time = time.perf_counter()
+
+    try:
+        response = requests.post(
+            ONLINE_COMPILER_URL,
+            headers={
+                "Authorization": api_key,
+                "Content-Type": "application/json",
+            },
+            json=payload,
+            timeout=40,
+        )
+
+        if response.status_code != 200:
+            raise RuntimeError(
+                f"OnlineCompiler API error "
+                f"({response.status_code}): {response.text[:1000]}"
+            )
+
+        data = response.json()
+
+        compile_result = data.get("compile") or {}
+        run_result = data.get("run") or {}
+
+        # Compilation error
+        if compile_result.get("code", 0) != 0:
+            return {
+                "success": False,
+                "output": compile_result.get("stdout", "")[-20000:],
+                "error": compile_result.get("stderr", "")[-20000:],
+                "execution_time": round(
+                    time.perf_counter() - start_time, 3
+                ),
+                "exit_code": compile_result.get("code", 1),
+            }
+
+        if not run_result:
+            raise RuntimeError(
+                data.get("message", "Invalid execution response.")
+            )
+
+        output = run_result.get("stdout", "")
+        error = run_result.get("stderr", "")
+        exit_code = run_result.get("code")
+
+        if exit_code is None:
+            exit_code = 1
+
+        if run_result.get("status") == "TO" and not error:
+            error = "Execution timed out."
+
+        wall_time = run_result.get("wall_time")
+
+        if wall_time is not None:
+            execution_time = round(wall_time / 1000, 3)
+        else:
+            execution_time = round(
+                time.perf_counter() - start_time, 3
+            )
+
+        return {
+            "success": exit_code == 0 and not error,
+            "output": output[-20000:],
+            "error": error[-20000:],
+            "execution_time": execution_time,
+            "exit_code": exit_code,
+        }
+
+    except requests.Timeout:
+        raise RuntimeError(
+            "Online execution request timed out."
+        )
+
+    except requests.RequestException as error:
+        raise RuntimeError(
+            f"OnlineCompiler connection failed: {error}"
+        )
+
+    except ValueError:
+        raise RuntimeError(
+            "OnlineCompiler returned an invalid response."
+        )
 
 
 def execute_code(language: str, code: str, stdin: str = ""):
@@ -50,78 +155,5 @@ def execute_code(language: str, code: str, stdin: str = ""):
     if len(stdin) > 10000:
         raise ValueError("Input size cannot exceed 10 KB")
 
-    config = LANGUAGE_CONFIG[language]
-    start_time = time.perf_counter()
-
-    try:
-        with tempfile.TemporaryDirectory(prefix="codetogether_") as temp_dir:
-            source_path = Path(temp_dir) / config["filename"]
-            source_path.write_text(code, encoding="utf-8")
-
-            command = [
-                "docker", "run", "--rm", "-i",
-                "--network", "none",
-                "--memory", "128m",
-                "--memory-swap", "128m",
-                "--cpus", "0.5",
-                "--pids-limit", "64",
-                "--read-only",
-                "--tmpfs", "/tmp:rw,nosuid,nodev,size=64m",
-                "--cap-drop", "ALL",
-                "--security-opt", "no-new-privileges",
-                "--mount",
-                f"type=bind,source={temp_dir},target=/workspace,readonly",
-                "--workdir", "/workspace",
-                "--entrypoint", "/bin/sh",
-                config["image"],
-                "-c", config["command"],
-            ]
-
-            try:
-                result = subprocess.run(
-                    command,
-                    input=stdin,
-                    capture_output=True,
-                    text=True,
-                    encoding="utf-8",
-                    errors="replace",
-                    timeout=5,
-                    check=False,
-                )
-
-                elapsed = round(time.perf_counter() - start_time, 3)
-
-                output = result.stdout[-20000:]
-                error = result.stderr[-20000:]
-
-                return {
-                    "success": result.returncode == 0,
-                    "output": output,
-                    "error": error,
-                    "execution_time": elapsed,
-                    "exit_code": result.returncode,
-                }
-
-            except subprocess.TimeoutExpired:
-                return {
-                    "success": False,
-                    "output": "",
-                    "error": "Execution timed out (5 seconds limit).",
-                    "execution_time": 5,
-                    "exit_code": None,
-                }
-
-    except FileNotFoundError:
-        raise RuntimeError("Docker CLI was not found. Check Docker Desktop.")
-
-    except subprocess.TimeoutExpired:
-        return {
-            "success": False,
-            "output": "",
-            "error": "Execution timed out.",
-            "execution_time": 5,
-            "exit_code": None,
-        }
-
-    except Exception as error:
-        raise RuntimeError(f"Code execution failed: {str(error)}")
+    # Hosted execution through OnlineCompiler
+    return execute_online(language, code, stdin)

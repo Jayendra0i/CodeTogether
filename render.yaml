@@ -16,7 +16,7 @@ services:
       - key: FRONTEND_ORIGINS
         value: https://codetogether-frontend.onrender.com
       - key: CODE_EXECUTION_ENABLED
-        value: "false"
+        value: "True"
       - key: PYTHON_VERSION
         value: 3.12.8
 

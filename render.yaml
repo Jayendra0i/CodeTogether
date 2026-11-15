@@ -1,0 +1,39 @@
+databases:
+  - name: codetogether-db
+    databaseName: codetogether
+    user: codetogether
+    plan: free
+
+services:
+  - type: web
+    name: codetogether-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: codetogether-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: FRONTEND_ORIGINS
+        value: https://codetogether-frontend.onrender.com
+      - key: CODE_EXECUTION_ENABLED
+        value: "false"
+      - key: PYTHON_VERSION
+        value: 3.12.8
+
+  - type: web
+    name: codetogether-frontend
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./dist
+    envVars:
+      - key: VITE_API_URL
+        value: https://codetogether-api.onrender.com
+      - key: VITE_WS_URL
+        value: wss://codetogether-api.onrender.com

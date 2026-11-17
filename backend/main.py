@@ -77,6 +77,8 @@ async def enforce_guest_room_scope(request: Request, call_next):
     except JWTError:
         claims = {}
     if claims.get("guest"):
+        if request.url.path == "/ai/assistant" and request.method == "POST":
+            return await call_next(request)
         allowed_room = str(claims.get("room_code", "")).upper()
         parts = request.url.path.strip("/").split("/")
         requested_room = None

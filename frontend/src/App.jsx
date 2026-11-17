@@ -1739,10 +1739,8 @@ function App() {
           </span>
 
           <span className="signed-in-user">
-            {loggedInUser.username ||
-              loggedInUser.name ||
-              loggedInUser.email}
-          </span>
+  {username || "User"}
+</span>
 
           <button
             className="logout-btn"

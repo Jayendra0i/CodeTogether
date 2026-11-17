@@ -17,14 +17,12 @@ from backend.database import engine
 from backend.models import User
 
 
-# Load backend/.env
 from pathlib import Path
 
 ENV_PATH = Path(__file__).resolve().parent / ".env"
 load_dotenv(ENV_PATH, override=False)
 
 
-# Configuration
 SECRET_KEY = os.getenv("SECRET_KEY")
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 
@@ -51,7 +49,7 @@ def get_db():
         db.close()
 
 
-# Password hashing
+
 pwd_context = CryptContext(
     schemes=["bcrypt"],
     deprecated="auto"

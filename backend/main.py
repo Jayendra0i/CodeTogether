@@ -4,6 +4,7 @@ import json
 import secrets
 import string
 import os
+from backend.ai_assistant import router as ai_router
 
 from typing import Dict, Optional
 
@@ -63,7 +64,7 @@ app.add_middleware(
 # ==================================================
 # AUTHENTICATION ROUTER
 # ==================================================
-
+app.include_router(ai_router)
 app.include_router(auth_router)
 
 

@@ -131,7 +131,7 @@ function App() {
   const [authPassword, setAuthPassword] = useState("");
   const [authError, setAuthError] = useState("");
   const [loggedInUser, setLoggedInUser] = useState(null);
-  const [inviteToken, setInviteToken] = useState(() => new URLSearchParams(window.location.search).get("invite") || "");
+  const [inviteToken] = useState(() => new URLSearchParams(window.location.search).get("invite") || "");
   const [invitationToken, setInvitationToken] = useState("");
   const [inviteLink, setInviteLink] = useState("");
   const [guestName, setGuestName] = useState("");
@@ -183,6 +183,16 @@ function App() {
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState("");
   const [sendingChat, setSendingChat] = useState(false);
+
+  // =========================
+// AI ASSISTANT STATES
+// =========================
+
+const [activeChatTab, setActiveChatTab] = useState("chat");
+const [aiMessages, setAiMessages] = useState([]);
+const [aiInput, setAiInput] = useState("");
+const [aiTask, setAiTask] = useState("ask");
+const [sendingAI, setSendingAI] = useState(false);
 
   // =========================
   // CODE EXECUTION STATES
@@ -713,6 +723,64 @@ function App() {
       behavior: "smooth",
     });
   }, [chatMessages]);
+
+  // =========================
+// SEND AI ASSISTANT REQUEST
+// =========================
+
+const sendAIRequest = async (task = aiTask) => {
+  const cleanInput = aiInput.trim();
+
+  if (sendingAI || (!code.trim() && !cleanInput)) {
+    return;
+  }
+
+  setSendingAI(true);
+
+  setAiMessages((prev) => [
+    ...prev,
+    {
+      role: "user",
+      text: cleanInput || `${task} my code`,
+    },
+  ]);
+
+  try {
+    const response = await axios.post(`${API}/ai/assistant`, {
+      task,
+      language,
+      code,
+      message: cleanInput,
+    });
+
+    setAiMessages((prev) => [
+      ...prev,
+      {
+        role: "ai",
+        text: response.data.response,
+      },
+    ]);
+
+    setAiInput("");
+
+  } catch (error) {
+    console.error("AI Assistant error:", error);
+
+    setAiMessages((prev) => [
+      ...prev,
+      {
+        role: "ai",
+        text: getErrorMessage(
+          error,
+          "Unable to connect to AI Assistant."
+        ),
+      },
+    ]);
+
+  } finally {
+    setSendingAI(false);
+  }
+};
 
   // =========================
   // WEBSOCKET CONNECTION
@@ -2273,7 +2341,26 @@ function App() {
         {/* ROOM CHAT PANEL */}
 
         <aside className="chat-panel">
+          <div className="chat-tabs">
+  <button
+    type="button"
+    className={activeChatTab === "chat" ? "active" : ""}
+    onClick={() => setActiveChatTab("chat")}
+  >
+    Room Chat
+  </button>
 
+  <button
+    type="button"
+    className={activeChatTab === "ai" ? "active" : ""}
+    onClick={() => setActiveChatTab("ai")}
+  >
+    ✨ AI Assistant
+  </button>
+</div>
+              {activeChatTab === "chat" && (
+  <>
+  
           <div className="chat-header">
 
             <div>
@@ -2387,7 +2474,10 @@ function App() {
               {sendingChat ? "..." : "Send"}
             </button>
 
-          </form>
+                    </form>
+
+          </>
+          )}
 
         </aside>
 

@@ -7,8 +7,10 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 from google import genai
 from google.genai import types
+from google.genai import errors
 
 from backend.auth import get_current_user
+import random
 
 
 router = APIRouter()
@@ -69,23 +71,37 @@ Provide a clear and useful programming response.
 Use code blocks whenever providing code.
 """
 
+
     try:
         client = genai.Client(api_key=api_key)
 
-        response = await asyncio.to_thread(
-            client.models.generate_content,
-            model="gemini-3.8-flash",
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                temperature=0.3,
-                max_output_tokens=4096,
-                system_instruction=(
-                    "You are CodeTogether AI, an expert programming assistant. "
-                    "Help users understand, debug, generate and optimize code. "
-                    "Give accurate, beginner-friendly explanations."
+        response = None
+
+        for attempt in range(3):
+            try:
+                response = await asyncio.to_thread(
+                    client.models.generate_content,
+                    model="gemini-3.8-flash",
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        temperature=0.3,
+                        max_output_tokens=4096,
+                        system_instruction=(
+                            "You are CodeTogether AI, an expert programming assistant. "
+                            "Help users understand, debug, generate and optimize code. "
+                            "Give accurate, beginner-friendly explanations."
+                        )
+                    )
                 )
-            )
-        )
+                break
+
+            except errors.ServerError as exc:
+                if attempt == 2 or getattr(exc, "code", None) != 503:
+                    raise
+
+                delay = (2 ** attempt) + random.uniform(0, 1)
+                print(f"Gemini 503. Retrying in {delay:.1f}s", flush=True)
+                await asyncio.sleep(delay)
 
         answer = response.text
 

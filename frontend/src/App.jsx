@@ -2479,6 +2479,79 @@ const sendAIRequest = async (task = aiTask) => {
           </>
           )}
 
+{activeChatTab === "ai" && (
+  <>
+    <div className="chat-header">
+      <div>
+        <h3>AI Assistant</h3>
+        <small>Powered by Gemini</small>
+      </div>
+    </div>
+
+    <div className="ai-task-buttons">
+      {[
+        { value: "explain", label: "Explain Code" },
+        { value: "fix", label: "Fix Errors" },
+        { value: "generate", label: "Generate Code" },
+        { value: "optimize", label: "Optimize Code" },
+      ].map((task) => (
+        <button
+          type="button"
+          key={task.value}
+          onClick={() => {
+            setAiTask(task.value);
+            sendAIRequest(task.value);
+          }}
+          disabled={sendingAI}
+        >
+          {task.label}
+        </button>
+      ))}
+    </div>
+
+    <div className="ai-messages">
+      {aiMessages.length === 0 ? (
+        <p className="chat-empty">
+          Ask AI to explain, fix or generate code.
+        </p>
+      ) : (
+        aiMessages.map((item, index) => (
+          <div
+            key={index}
+            className={`ai-message ${item.role}`}
+          >
+            {item.text}
+          </div>
+        ))
+      )}
+    </div>
+
+    <form
+      className="chat-input-area"
+      onSubmit={(e) => {
+        e.preventDefault();
+        sendAIRequest("ask");
+      }}
+    >
+      <input
+        value={aiInput}
+        onChange={(e) => setAiInput(e.target.value)}
+        placeholder="Ask AI about your code..."
+        disabled={sendingAI}
+      />
+
+      <button
+        type="submit"
+        disabled={sendingAI || !aiInput.trim()}
+      >
+        {sendingAI ? "..." : "Ask"}
+      </button>
+    </form>
+  </>
+)}
+
+
+
         </aside>
 
       </main>

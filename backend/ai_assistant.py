@@ -103,7 +103,11 @@ Use code blocks whenever providing code.
     except HTTPException:
         raise
 
-    except Exception:
+    except Exception as exc:
+        print(
+            f"Gemini API Error: {type(exc).__name__}: {exc}",
+            flush=True
+        )
         raise HTTPException(
             status_code=502,
             detail="Unable to get a response from Gemini. Please try again."

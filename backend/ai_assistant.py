@@ -30,11 +30,7 @@ async def ai_assistant(
     data: AIRequest,
     current_user=Depends(get_current_user),
 ):
-    if getattr(current_user, "guest", False):
-        raise HTTPException(
-            status_code=403,
-            detail="AI Assistant is available to registered users only."
-        )
+    
 
     if not data.code.strip() and not data.message.strip():
         raise HTTPException(

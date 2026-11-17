@@ -1998,61 +1998,52 @@ function App() {
 
           {/* PARTICIPANTS */}
 
-          <div className="room-info participants-panel">
+          
+{/* PARTICIPANTS */}
+<div className="room-info participants-panel">
+  <h3>
+    Participants ({participants.length})
+  </h3>
 
-            <h3>
-              Participants ({participants.length})
-            </h3>
+  {participants.length === 0 ? (
+    <p>No participants online</p>
+  ) : (
+    <div className="participants-list">
+      {participants.map((person, index) => {
+        const participantName =
+          typeof person === "string"
+            ? person
+            : person?.username || person?.name || "User";
 
-            {participants.length === 0 ? (
+        return (
+          <div
+            className="participant"
+            key={`${participantName}-${index}`}
+          >
+            <div
+              className="participant-avatar"
+              style={{
+                backgroundColor: getUserColor(
+                  participantName,
+                  index
+                ),
+              }}
+              title={participantName}
+            >
+              {getUserInitials(participantName)}
+            </div>
 
-              <p>No participants online</p>
-
-            ) : (
-
-              <div className="participants-list">
-
-                {participants.map((person, index) => (
-
-                  <div
-                    className="participant"
-                    key={`${person.username}-${index}`}
-                  >
-
-                    <div
-                      className="participant-avatar"
-                      style={{
-                        backgroundColor: getUserColor(
-                          person.username,
-                          index
-                        ),
-                      }}
-                      title={person.username}
-                    >
-                      {getUserInitials(person.username)}
-                    </div>
-
-                    <div className="participant-details">
-
-                      <span>
-                        {person.username}
-                      </span>
-
-                      <small>
-                        🟢 Online
-                      </small>
-
-                    </div>
-
-                  </div>
-
-                ))}
-
-              </div>
-
-            )}
-
+            <div className="participant-details">
+              <span>{participantName}</span>
+              <small>🟢 Online</small>
+            </div>
           </div>
+        );
+      })}
+    </div>
+  )}
+</div>
+
 
           {message && (
             <p className="message">

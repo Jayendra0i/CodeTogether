@@ -728,6 +728,7 @@ const [sendingAI, setSendingAI] = useState(false);
 // SEND AI ASSISTANT REQUEST
 // =========================
 
+
 const sendAIRequest = async (task = aiTask) => {
   const cleanInput = aiInput.trim();
 
@@ -743,44 +744,99 @@ const sendAIRequest = async (task = aiTask) => {
       role: "user",
       text: cleanInput || `${task} my code`,
     },
+    {
+      role: "ai",
+      text: "",
+    },
   ]);
 
   try {
-    const response = await axios.post(`${API}/ai/assistant`, {
-      task,
-      language,
-      code,
-      message: cleanInput,
+    const response = await fetch(`${API}/ai/assistant`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${authToken}`,
+      },
+      body: JSON.stringify({
+        task,
+        language,
+        code,
+        message: cleanInput,
+      }),
     });
 
-    setAiMessages((prev) => [
-      ...prev,
-      {
-        role: "ai",
-        text: response.data.response,
-      },
-    ]);
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(
+        typeof errorData.detail === "string"
+          ? errorData.detail
+          : "AI Assistant request failed."
+      );
+    }
+
+    if (!response.body) {
+      throw new Error("Streaming is not supported by this browser.");
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let fullResponse = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+
+      if (done) break;
+
+      fullResponse += decoder.decode(value, { stream: true });
+
+      setAiMessages((prev) => {
+        const updated = [...prev];
+        const lastIndex = updated.length - 1;
+
+        updated[lastIndex] = {
+          ...updated[lastIndex],
+          text: fullResponse,
+        };
+
+        return updated;
+      });
+    }
+
+    fullResponse += decoder.decode();
+
+    setAiMessages((prev) => {
+      const updated = [...prev];
+      const lastIndex = updated.length - 1;
+
+      updated[lastIndex] = {
+        ...updated[lastIndex],
+        text: fullResponse,
+      };
+
+      return updated;
+    });
 
     setAiInput("");
 
   } catch (error) {
     console.error("AI Assistant error:", error);
 
-    setAiMessages((prev) => [
-      ...prev,
-      {
-        role: "ai",
-        text: getErrorMessage(
-          error,
-          "Unable to connect to AI Assistant."
-        ),
-      },
-    ]);
+    setAiMessages((prev) => {
+      const updated = [...prev];
+
+      updated[updated.length - 1] = {
+        ...updated[updated.length - 1],
+        text: error.message || "Unable to connect to AI Assistant.",
+      };
+
+      return updated;
+    });
 
   } finally {
     setSendingAI(false);
   }
 };
+
 
   // =========================
   // WEBSOCKET CONNECTION

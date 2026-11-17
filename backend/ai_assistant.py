@@ -1,16 +1,18 @@
 
 import os
-import asyncio
+import time
+import random
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Depends
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+
 from google import genai
 from google.genai import types
 from google.genai import errors
 
 from backend.auth import get_current_user
-import random
 
 
 router = APIRouter()
@@ -71,60 +73,75 @@ Provide a clear and useful programming response.
 Use code blocks whenever providing code.
 """
 
+    client = genai.Client(api_key=api_key)
 
-    try:
-        client = genai.Client(api_key=api_key)
+    config = types.GenerateContentConfig(
+        temperature=0.3,
+        max_output_tokens=4096,
+        system_instruction=(
+            "You are CodeTogether AI, an expert programming assistant. "
+            "Help users understand, debug, generate and optimize code. "
+            "Give accurate, beginner-friendly explanations."
+        )
+    )
 
-        response = None
+    def generate():
+        try:
+            first_chunk = None
+            stream_iterator = None
+            empty_response = object()
 
-        for attempt in range(3):
-            try:
-                response = await asyncio.to_thread(
-                    client.models.generate_content,
-                    model="gemini-3.8-flash",
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        temperature=0.3,
-                        max_output_tokens=4096,
-                        system_instruction=(
-                            "You are CodeTogether AI, an expert programming assistant. "
-                            "Help users understand, debug, generate and optimize code. "
-                            "Give accurate, beginner-friendly explanations."
-                        )
+            # Retry temporary Gemini 503 errors
+            for attempt in range(3):
+                try:
+                    stream = client.models.generate_content_stream(
+                        model="gemini-3.8-flash",
+                        contents=prompt,
+                        config=config
                     )
-                )
-                break
 
-            except errors.ServerError as exc:
-                if attempt == 2 or getattr(exc, "code", None) != 503:
-                    raise
+                    stream_iterator = iter(stream)
+                    first_chunk = next(
+                        stream_iterator,
+                        empty_response
+                    )
 
-                delay = (2 ** attempt) + random.uniform(0, 1)
-                print(f"Gemini 503. Retrying in {delay:.1f}s", flush=True)
-                await asyncio.sleep(delay)
+                    break
 
-        answer = response.text
+                except errors.ServerError as exc:
+                    if (
+                        getattr(exc, "code", None) != 503
+                        or attempt == 2
+                    ):
+                        raise
 
-        if not answer:
-            raise HTTPException(
-                status_code=502,
-                detail="Gemini returned an empty response."
+                    delay = (2 ** attempt) + random.uniform(0, 1)
+
+                    print(
+                        f"Gemini 503 error. Retrying in {delay:.1f} seconds...",
+                        flush=True
+                    )
+
+                    time.sleep(delay)
+
+            # Send the first chunk
+            if first_chunk is not empty_response and first_chunk.text:
+                yield first_chunk.text
+
+            # Send remaining chunks progressively
+            for chunk in stream_iterator:
+                if chunk.text:
+                    yield chunk.text
+
+        except Exception as exc:
+            print(
+                f"Gemini Streaming Error: {type(exc).__name__}: {exc}",
+                flush=True
             )
 
-        return {
-            "success": True,
-            "response": answer
-        }
+            yield "\n\n[AI response interrupted. Please try again.]"
 
-    except HTTPException:
-        raise
-
-    except Exception as exc:
-        print(
-            f"Gemini API Error: {type(exc).__name__}: {exc}",
-            flush=True
-        )
-        raise HTTPException(
-            status_code=502,
-            detail="Unable to get a response from Gemini. Please try again."
-        )
+    return StreamingResponse(
+        generate(),
+        media_type="text/plain; charset=utf-8"
+    )
